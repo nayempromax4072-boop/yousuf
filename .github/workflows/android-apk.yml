@@ -14,6 +14,7 @@ jobs:
       contents: write
 
     env:
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
@@ -33,10 +34,12 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           fi
 
-      - name: Decode optional google-services.json from secret
+      - name: Prepare google-services.json from secret
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '[:space:]' | base64 -d > app/google-services.json
           fi
 
       - name: Prepare debug keystore
@@ -44,9 +47,9 @@ jobs:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > debug.keystore
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > debug.keystore
           elif [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+            tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore
           elif [ ! -f debug.keystore ]; then
             keytool -genkeypair -v -keystore debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
@@ -57,7 +60,7 @@ jobs:
       - name: Check Firebase google-services.json
         run: |
           if [ ! -f app/google-services.json ]; then
-            echo "::warning::app/google-services.json is missing. Add app/google-services.json or set GOOGLE_SERVICES_JSON_BASE64 secret so Firebase & Google Sign-In work in the APK."
+            echo "::warning::app/google-services.json is missing. Add GOOGLE_SERVICES_JSON secret in GitHub Settings so Firebase & Google Sign-In work."
           fi
 
       - name: Decode optional release keystore from secret

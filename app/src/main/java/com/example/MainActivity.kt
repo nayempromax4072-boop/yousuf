@@ -105,7 +105,7 @@ fun YusufAppRoot() {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Firebase কনফিগারেশন (google-services.json) এই APK বিল্ডে যুক্ত করা হয়নি।\n\nGitHub Secrets-এ GOOGLE_SERVICES_JSON_BASE64 অথবা রিপোজিটরিতে app/google-services.json যোগ করে আবার বিল্ড করুন।",
+                text = "Firebase কনফিগারেশন (google-services.json) এই APK বিল্ডে যুক্ত করা হয়নি।\n\nGitHub Secrets-এ GOOGLE_SERVICES_JSON যোগ করে আবার বিল্ড করুন।",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
