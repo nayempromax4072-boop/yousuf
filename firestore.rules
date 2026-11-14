@@ -154,6 +154,23 @@ service cloud.firestore {
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
+    function isValidMediaBlob(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.recipientId is string && data.recipientId.size() <= 128 &&
+             data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 100 &&
+             data.extension is string && data.extension.size() >= 1 && data.extension.size() <= 16 &&
+             data.byteSize is int && data.byteSize >= 1 && data.byteSize <= 10485760 &&
+             data.chunkCount is int && data.chunkCount >= 1 && data.chunkCount <= 30 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidMediaChunk(data) {
+      return data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.recipientId is string && data.recipientId.size() <= 128 &&
+             data.index is int && data.index >= 0 && data.index < 30 &&
+             data.data is string && data.data.size() >= 1 && data.data.size() <= 750000;
+    }
+
     // --- Collection Rules ---
 
     // 1. Admins Registry (server/console managed only)
@@ -350,6 +367,35 @@ service cloud.firestore {
                        isValidBusinessSettings(incoming()) &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['shopName', 'tagline', 'phone', 'email', 'address', 'description', 'workingHours', 'isServiceAvailable', 'logoUrl', 'updatedAt']);
       allow delete: if false;
+    }
+
+    // 9. Firestore-Backed Media Blobs (chunked photo/video/voice storage)
+    match /media_blobs/{mediaId} {
+      allow get: if isSignedIn() && isValidId(mediaId) && (existing().ownerId == request.auth.uid || existing().recipientId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(mediaId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       (isAdmin() || incoming().recipientId == '' || incoming().recipientId == request.auth.uid) &&
+                       incoming().keys().hasAll(['ownerId', 'recipientId', 'mimeType', 'extension', 'byteSize', 'chunkCount', 'createdAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'recipientId', 'mimeType', 'extension', 'byteSize', 'chunkCount', 'createdAt']) &&
+                       isValidMediaBlob(incoming());
+      allow update: if false;
+      allow delete: if isAdmin() || (isSignedIn() && isValidId(mediaId) && existing().ownerId == request.auth.uid);
+
+      match /chunks/{chunkId} {
+        allow get: if isSignedIn() && isValidId(chunkId) && (existing().ownerId == request.auth.uid || existing().recipientId == request.auth.uid || isAdmin());
+        allow list: if isAdmin();
+        allow create: if isSignedIn() &&
+                         isValidId(chunkId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         (isAdmin() || incoming().recipientId == '' || incoming().recipientId == request.auth.uid) &&
+                         incoming().keys().hasAll(['ownerId', 'recipientId', 'index', 'data']) &&
+                         incoming().keys().hasOnly(['ownerId', 'recipientId', 'index', 'data']) &&
+                         isValidMediaChunk(incoming());
+        allow update: if false;
+        allow delete: if isAdmin() || (isSignedIn() && isValidId(chunkId) && existing().ownerId == request.auth.uid);
+      }
     }
   }
 }

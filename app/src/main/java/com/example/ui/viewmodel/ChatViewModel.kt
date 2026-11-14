@@ -93,6 +93,9 @@ class ChatViewModel(
         }
     }
 
+    private val mediaRecipientId: String
+        get() = if (senderRole == "admin") conversationId else ""
+
     fun sendImage(
         context: Context,
         uri: Uri,
@@ -109,6 +112,7 @@ class ChatViewModel(
                 storageFolder = "chats/$conversationId",
                 bytes = bytes,
                 extension = "jpg",
+                recipientId = mediaRecipientId,
                 onProgress = { p ->
                     _uploadState.value = _uploadState.value.copy(progress = p.coerceIn(0.05f, 0.95f))
                 }
@@ -142,13 +146,15 @@ class ChatViewModel(
         val action: suspend () -> Unit = {
             val size = MediaHelper.getFileSizeBytes(context, uri)
             if (size > MediaHelper.MAX_VIDEO_BYTES) {
-                throw IllegalArgumentException("Video must be 20 MB or smaller.")
+                throw IllegalArgumentException("Video must be 10 MB or smaller.")
             }
             _uploadState.value = ChatUploadState(isUploading = true, progress = 0.05f)
             val url = chatRepository.uploadContentUri(
+                context = context,
                 storageFolder = "chats/$conversationId",
                 uri = uri,
                 extension = "mp4",
+                recipientId = mediaRecipientId,
                 onProgress = { p ->
                     _uploadState.value = _uploadState.value.copy(progress = p.coerceIn(0.05f, 0.95f))
                 }
@@ -183,6 +189,7 @@ class ChatViewModel(
             val url = chatRepository.uploadFile(
                 storageFolder = "chats/$conversationId",
                 file = file,
+                recipientId = mediaRecipientId,
                 onProgress = { p ->
                     _uploadState.value = _uploadState.value.copy(progress = p.coerceIn(0.05f, 0.95f))
                 }

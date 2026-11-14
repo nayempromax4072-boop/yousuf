@@ -4,6 +4,7 @@ import com.example.base.FirestoreEmulatorTestBase
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -129,6 +130,43 @@ class YusufRepositoriesRuleTest : FirestoreEmulatorTestBase() {
         val fsEx = caught?.unwrapFirestoreException()
         assertNotNull("Expected nested FirebaseFirestoreException, got $caught", fsEx)
         assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, fsEx?.code)
+    }
+
+    @Test
+    fun mediaBlobStore_uploadAndResolveOwnMedia_crossUserDenied() = runBlocking {
+        val aliceUid = signInTestUser("media_alice_${UUID.randomUUID()}@test.com")
+        val sampleBytes = "YusufElectronicsSampleImageBytes123456".toByteArray()
+
+        val uploadRes = withTimeout(DEFAULT_TIMEOUT_MS) {
+            com.example.data.firebase.FirestoreMediaStore.uploadBytes(
+                db = firestore,
+                ownerId = aliceUid,
+                recipientId = "",
+                bytes = sampleBytes,
+                mimeType = "image/jpeg",
+                extension = "jpg"
+            )
+        }
+        assertTrue("Media blob upload should succeed: ${uploadRes.exceptionOrNull()}", uploadRes.isSuccess)
+        val fsMediaUrl = uploadRes.getOrThrow()
+        assertTrue(fsMediaUrl.startsWith("fsmedia://"))
+
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val cachedFile = withTimeout(DEFAULT_TIMEOUT_MS) {
+            com.example.data.firebase.FirestoreMediaStore.resolveToCachedFile(context, firestore, fsMediaUrl)
+        }
+        assertNotNull("Owner should resolve uploaded media blob to cached file", cachedFile)
+        assertTrue("Resolved bytes should match uploaded bytes", cachedFile!!.readBytes().contentEquals(sampleBytes))
+
+        // Another user must NOT be able to resolve Alice's private media blob
+        signInTestUser("media_bob_${UUID.randomUUID()}@test.com")
+        val mediaId = com.example.data.firebase.FirestoreMediaStore.extractMediaId(fsMediaUrl)!!
+        val bobSnapResult = runCatching {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                firestore.collection("media_blobs").document(mediaId).get().await()
+            }
+        }
+        assertTrue("Bob must be denied read access to Alice's media blob", bobSnapResult.isFailure)
     }
 
     private companion object {

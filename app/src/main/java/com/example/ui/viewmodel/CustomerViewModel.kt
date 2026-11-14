@@ -191,9 +191,10 @@ class CustomerViewModel(
                 if (videoUri != null) {
                     val size = MediaHelper.getFileSizeBytes(context, videoUri)
                     if (size > MediaHelper.MAX_VIDEO_BYTES) {
-                        throw IllegalArgumentException("Video exceeds 20 MB size limit.")
+                        throw IllegalArgumentException("Video exceeds 10 MB size limit.")
                     }
                     uploadedVideoUrl = chatRepository.uploadContentUri(
+                        context = context,
                         storageFolder = "orders/$currentUserId",
                         uri = videoUri,
                         extension = "mp4",

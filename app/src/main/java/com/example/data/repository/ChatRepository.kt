@@ -16,6 +16,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.snapshots
+import android.util.Log
+import com.example.data.firebase.FirestoreMediaStore
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -266,9 +268,11 @@ class ChatRepository(
         storageFolder: String,
         bytes: ByteArray,
         extension: String,
+        recipientId: String = "",
         onProgress: (Float) -> Unit = {}
     ): Result<String> {
-        return try {
+        val ownerId = requireUserId()
+        try {
             val fileName = "${UUID.randomUUID()}.$extension"
             val ref = FirebaseStorage.getInstance().reference.child("$storageFolder/$fileName")
             val task = ref.putBytes(bytes)
@@ -279,21 +283,33 @@ class ChatRepository(
             }
             task.await()
             val url = ref.downloadUrl.await().toString()
-            Result.success(url)
+            return Result.success(url)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.w(TAG, "Storage putBytes failed (${e.message}), using Firestore media store fallback")
         }
+
+        return FirestoreMediaStore.uploadBytes(
+            db = db,
+            ownerId = ownerId,
+            recipientId = recipientId,
+            bytes = bytes,
+            mimeType = FirestoreMediaStore.mimeTypeForExtension(extension),
+            extension = extension,
+            onProgress = onProgress
+        )
     }
 
     suspend fun uploadFile(
         storageFolder: String,
         file: File,
+        recipientId: String = "",
         onProgress: (Float) -> Unit = {}
     ): Result<String> {
-        return try {
-            val ext = file.extension.ifBlank { "bin" }
+        val ownerId = requireUserId()
+        val ext = file.extension.ifBlank { "bin" }
+        try {
             val fileName = "${UUID.randomUUID()}.$ext"
             val ref = FirebaseStorage.getInstance().reference.child("$storageFolder/$fileName")
             val task = ref.putFile(Uri.fromFile(file))
@@ -304,7 +320,30 @@ class ChatRepository(
             }
             task.await()
             val url = ref.downloadUrl.await().toString()
-            Result.success(url)
+            return Result.success(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Storage putFile failed (${e.message}), using Firestore media store fallback")
+        }
+
+        return try {
+            val fileLen = file.length()
+            if (fileLen > FirestoreMediaStore.MAX_MEDIA_BYTES) {
+                return Result.failure(
+                    IllegalArgumentException("File exceeds 10 MB limit. Please record a shorter clip.")
+                )
+            }
+            val bytes = file.readBytes()
+            FirestoreMediaStore.uploadBytes(
+                db = db,
+                ownerId = ownerId,
+                recipientId = recipientId,
+                bytes = bytes,
+                mimeType = FirestoreMediaStore.mimeTypeForExtension(ext),
+                extension = ext,
+                onProgress = onProgress
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -313,12 +352,15 @@ class ChatRepository(
     }
 
     suspend fun uploadContentUri(
+        context: Context,
         storageFolder: String,
         uri: Uri,
         extension: String,
+        recipientId: String = "",
         onProgress: (Float) -> Unit = {}
     ): Result<String> {
-        return try {
+        val ownerId = requireUserId()
+        try {
             val fileName = "${UUID.randomUUID()}.$extension"
             val ref = FirebaseStorage.getInstance().reference.child("$storageFolder/$fileName")
             val task = ref.putFile(uri)
@@ -329,11 +371,36 @@ class ChatRepository(
             }
             task.await()
             val url = ref.downloadUrl.await().toString()
-            Result.success(url)
+            return Result.success(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Storage putFile(uri) failed (${e.message}), using Firestore media store fallback")
+        }
+
+        return try {
+            val bytes = FirestoreMediaStore.readUriBytesBounded(
+                context = context,
+                uri = uri,
+                maxBytes = FirestoreMediaStore.MAX_MEDIA_BYTES
+            )
+            FirestoreMediaStore.uploadBytes(
+                db = db,
+                ownerId = ownerId,
+                recipientId = recipientId,
+                bytes = bytes,
+                mimeType = FirestoreMediaStore.mimeTypeForExtension(extension),
+                extension = extension,
+                onProgress = onProgress
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private companion object {
+        const val TAG = "ChatRepository"
     }
 }

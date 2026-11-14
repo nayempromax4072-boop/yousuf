@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.BorderStroke
@@ -24,15 +25,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.ElectricalServices
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Plumbing
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.WindPower
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,15 +45,23 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,9 +73,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.firebase.FirestoreMediaStore
 import com.example.data.model.OrderStatus
 import com.example.localization.AppLanguage
 import com.example.ui.theme.CharcoalSurface
+import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepBlack
 import com.example.ui.theme.ElectricYellow
 import com.example.ui.theme.LightGray
@@ -76,6 +90,8 @@ import com.example.ui.theme.StatusPending
 import com.example.ui.theme.StatusScheduled
 import com.example.ui.theme.SubtleBorder
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FirebaseFirestore
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -307,6 +323,79 @@ fun EmptyStateCard(
 }
 
 @Composable
+fun MediaSourceChooserDialog(
+    title: String,
+    cameraLabel: String,
+    galleryLabel: String,
+    cancelLabel: String,
+    isVideo: Boolean,
+    onCameraClick: () -> Unit,
+    onGalleryClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CharcoalSurface,
+        title = { Text(title, color = ElectricYellow, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onCameraClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ElectricYellow,
+                        contentColor = DeepBlack
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isVideo) Icons.Filled.Videocam else Icons.Filled.CameraAlt,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(cameraLabel, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onGalleryClick()
+                    },
+                    border = BorderStroke(1.dp, ElectricYellow),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PhotoLibrary,
+                        contentDescription = null,
+                        tint = ElectricYellow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(galleryLabel, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(cancelLabel, color = LightGray)
+            }
+        }
+    )
+}
+
+@Composable
 fun FullScreenImageDialog(
     imageUrl: String,
     onDismiss: () -> Unit
@@ -352,6 +441,26 @@ fun FullScreenVideoDialog(
     videoUrl: String,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var resolvedVideoPath by remember(videoUrl) {
+        mutableStateOf<String?>(if (FirestoreMediaStore.isFsMediaUrl(videoUrl)) null else videoUrl)
+    }
+    var videoError by remember(videoUrl) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(videoUrl) {
+        if (FirestoreMediaStore.isFsMediaUrl(videoUrl)) {
+            val db = FirebaseFirestore.getInstance(
+                context.applicationContext.getString(R.string.firestore_database_id)
+            )
+            val file = FirestoreMediaStore.resolveToCachedFile(context, db, videoUrl)
+            if (file != null) {
+                resolvedVideoPath = file.absolutePath
+            } else {
+                videoError = "Unable to load video."
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -361,23 +470,51 @@ fun FullScreenVideoDialog(
                 .fillMaxSize()
                 .background(DeepBlack)
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    VideoView(ctx).apply {
-                        setVideoPath(videoUrl)
-                        val controller = MediaController(ctx)
-                        controller.setAnchorView(this)
-                        setMediaController(controller)
-                        setOnPreparedListener { mp ->
-                            mp.isLooping = false
-                            start()
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
-            )
+            val activePath = resolvedVideoPath
+            when {
+                videoError != null -> {
+                    Text(
+                        text = videoError ?: "Video error",
+                        color = DangerRed,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                activePath == null -> {
+                    CircularProgressIndicator(
+                        color = ElectricYellow,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                else -> {
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                val uri = if (activePath.startsWith("/")) {
+                                    Uri.fromFile(File(activePath))
+                                } else {
+                                    Uri.parse(activePath)
+                                }
+                                setVideoURI(uri)
+                                val controller = MediaController(ctx)
+                                controller.setAnchorView(this)
+                                setMediaController(controller)
+                                setOnPreparedListener { mp ->
+                                    mp.isLooping = false
+                                    start()
+                                }
+                                setOnErrorListener { _, _, _ ->
+                                    videoError = "Unable to play video."
+                                    true
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.Center)
+                    )
+                }
+            }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier

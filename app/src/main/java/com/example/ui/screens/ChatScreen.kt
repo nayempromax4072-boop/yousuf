@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,13 +16,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -63,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +77,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,12 +88,15 @@ import coil.compose.AsyncImage
 import com.example.data.model.ChatMessage
 import com.example.data.model.UiState
 import com.example.localization.LocalStrings
+import com.example.media.CaptureCompactVideo
+import com.example.media.MediaHelper
 import com.example.media.VoicePlayerManager
 import com.example.media.VoiceRecorderManager
 import com.example.media.observeNetworkOnline
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.FullScreenImageDialog
 import com.example.ui.components.FullScreenVideoDialog
+import com.example.ui.components.MediaSourceChooserDialog
 import com.example.ui.components.YusufLogoBadge
 import com.example.ui.components.formatTimestamp
 import com.example.ui.theme.CharcoalSurface
@@ -119,6 +130,7 @@ fun ChatScreen(
 ) {
     val strings = LocalStrings.current
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val messagesState by viewModel.messages.collectAsStateWithLifecycle()
     val uploadState by viewModel.uploadState.collectAsStateWithLifecycle()
@@ -128,6 +140,10 @@ fun ChatScreen(
     var pendingAttachment by remember { mutableStateOf<PendingAttachment?>(null) }
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     var fullScreenVideoUrl by remember { mutableStateOf<String?>(null) }
+    var showPhotoSourceDialog by remember { mutableStateOf(false) }
+    var showVideoSourceDialog by remember { mutableStateOf(false) }
+    var pendingCameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraVideoUri by remember { mutableStateOf<Uri?>(null) }
 
     // Voice recording & playback
     val recorderManager = remember(context) { VoiceRecorderManager(context) }
@@ -168,6 +184,17 @@ fun ChatScreen(
         }
     }
 
+    // Keep latest messages visible above the composer when the keyboard opens
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottom) {
+        if (imeBottom > 0) {
+            val list = (messagesState as? UiState.Success)?.data.orEmpty()
+            if (list.isNotEmpty()) {
+                listState.animateScrollToItem(list.lastIndex)
+            }
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -178,6 +205,22 @@ fun ChatScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) pendingAttachment = PendingAttachment.Video(uri)
+    }
+
+    val takePhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            pendingCameraPhotoUri?.let { pendingAttachment = PendingAttachment.Image(it) }
+        }
+    }
+
+    val captureVideoLauncher = rememberLauncherForActivityResult(
+        contract = CaptureCompactVideo()
+    ) { success ->
+        if (success) {
+            pendingCameraVideoUri?.let { pendingAttachment = PendingAttachment.Video(it) }
+        }
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -195,6 +238,7 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(DeepBlack)
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
     ) {
         // Chat Header
         Surface(
@@ -384,6 +428,8 @@ fun ChatScreen(
                                     onOpenVideo = { fullScreenVideoUrl = msg.mediaUrl },
                                     onToggleVoice = {
                                         playerManager.togglePlay(
+                                            context = context,
+                                            scope = coroutineScope,
                                             key = msg.id,
                                             source = msg.mediaUrl,
                                             onStateChanged = { k, playing ->
@@ -450,6 +496,8 @@ fun ChatScreen(
                             IconButton(
                                 onClick = {
                                     playerManager.togglePlay(
+                                        context = context,
+                                        scope = coroutineScope,
                                         key = previewKey,
                                         source = attachment.file.absolutePath,
                                         onStateChanged = { k, playing ->
@@ -565,11 +613,7 @@ fun ChatScreen(
                         .padding(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     IconButton(
-                        onClick = {
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
+                        onClick = { showPhotoSourceDialog = true },
                         modifier = Modifier
                             .size(48.dp)
                             .testTag("chat_attach_image")
@@ -577,11 +621,7 @@ fun ChatScreen(
                         Icon(Icons.Filled.Image, contentDescription = "Send Image", tint = ElectricYellow)
                     }
                     IconButton(
-                        onClick = {
-                            videoPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                            )
-                        },
+                        onClick = { showVideoSourceDialog = true },
                         modifier = Modifier
                             .size(48.dp)
                             .testTag("chat_attach_video")
@@ -651,6 +691,60 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showPhotoSourceDialog) {
+        MediaSourceChooserDialog(
+            title = strings.choosePhotoSource,
+            cameraLabel = strings.takePhotoCamera,
+            galleryLabel = strings.choosePhotoGallery,
+            cancelLabel = strings.cancel,
+            isVideo = false,
+            onCameraClick = {
+                try {
+                    val uri = MediaHelper.createCameraTempUri(context, "chat_photo", "jpg")
+                    pendingCameraPhotoUri = uri
+                    takePhotoLauncher.launch(uri)
+                } catch (_: ActivityNotFoundException) {
+                    audioError = "Camera app unavailable on this device."
+                } catch (e: Exception) {
+                    audioError = e.localizedMessage ?: "Unable to open camera."
+                }
+            },
+            onGalleryClick = {
+                imagePicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onDismiss = { showPhotoSourceDialog = false }
+        )
+    }
+
+    if (showVideoSourceDialog) {
+        MediaSourceChooserDialog(
+            title = strings.chooseVideoSource,
+            cameraLabel = strings.recordVideoCamera,
+            galleryLabel = strings.chooseVideoGallery,
+            cancelLabel = strings.cancel,
+            isVideo = true,
+            onCameraClick = {
+                try {
+                    val uri = MediaHelper.createCameraTempUri(context, "chat_video", "mp4")
+                    pendingCameraVideoUri = uri
+                    captureVideoLauncher.launch(uri)
+                } catch (_: ActivityNotFoundException) {
+                    audioError = "Video camera unavailable on this device."
+                } catch (e: Exception) {
+                    audioError = e.localizedMessage ?: "Unable to open camera video."
+                }
+            },
+            onGalleryClick = {
+                videoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                )
+            },
+            onDismiss = { showVideoSourceDialog = false }
+        )
     }
 
     fullScreenImageUrl?.let { url ->

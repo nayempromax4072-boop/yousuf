@@ -104,7 +104,13 @@ data class AppStrings(
     val signInRequiredForOrders: String,
     val signInRequiredForChat: String,
     val guestUserLabel: String,
-    val signInToUnlockFull: String
+    val signInToUnlockFull: String,
+    val choosePhotoSource: String,
+    val chooseVideoSource: String,
+    val takePhotoCamera: String,
+    val choosePhotoGallery: String,
+    val recordVideoCamera: String,
+    val chooseVideoGallery: String
 )
 
 val BnStrings = AppStrings(
@@ -153,7 +159,7 @@ val BnStrings = AppStrings(
     preferredDateLabel = "পছন্দের তারিখ",
     preferredTimeLabel = "পছন্দের সময়",
     addPhotos = "ছবি যোগ করুন",
-    addVideo = "ভিডিও যোগ করুন (সর্বোচ্চ ২০MB)",
+    addVideo = "ভিডিও যোগ করুন (সর্বোচ্চ ১০MB)",
     orderSubmittedTitle = "অর্ডার সফলভাবে জমা হয়েছে!",
     orderSubmittedMessage = "আমাদের টিম শীঘ্রই আপনার সাথে যোগাযোগ করবে।",
     orderIdLabel = "অর্ডার আইডি",
@@ -209,7 +215,13 @@ val BnStrings = AppStrings(
     signInRequiredForOrders = "আপনার বুক করা অর্ডার এবং পেন্ডিং থেকে সম্পন্ন পর্যন্ত লাইভ আপডেট দেখতে Google দিয়ে সাইন ইন করুন।",
     signInRequiredForChat = "ইউসুফ ইলেকট্রনিক্স সাপোর্টে সরাসরি টেক্সট, ছবি, ভিডিও এবং ভয়েস মেসেজ পাঠাতে Google দিয়ে সাইন ইন করুন।",
     guestUserLabel = "ইউসুফ ইলেকট্রনিক্স",
-    signInToUnlockFull = "অর্ডার, ট্র্যাকিং ও লাইভ চ্যাট আনলক করতে সাইন ইন করুন"
+    signInToUnlockFull = "অর্ডার, ট্র্যাকিং ও লাইভ চ্যাট আনলক করতে সাইন ইন করুন",
+    choosePhotoSource = "ছবি পাঠানোর মাধ্যম বাছুন",
+    chooseVideoSource = "ভিডিও পাঠানোর মাধ্যম বাছুন",
+    takePhotoCamera = "ক্যামেরা দিয়ে ছবি তুলুন",
+    choosePhotoGallery = "গ্যালারি থেকে ছবি বাছুন",
+    recordVideoCamera = "ক্যামেরা দিয়ে ভিডিও করুন",
+    chooseVideoGallery = "গ্যালারি থেকে ভিডিও বাছুন"
 )
 
 val EnStrings = AppStrings(
@@ -258,7 +270,7 @@ val EnStrings = AppStrings(
     preferredDateLabel = "Preferred Date",
     preferredTimeLabel = "Preferred Time",
     addPhotos = "Add Photos",
-    addVideo = "Add Video (Max 20MB)",
+    addVideo = "Add Video (Max 10MB)",
     orderSubmittedTitle = "Service Request Submitted!",
     orderSubmittedMessage = "Our team has been notified and will review your request shortly.",
     orderIdLabel = "Order ID",
@@ -314,7 +326,13 @@ val EnStrings = AppStrings(
     signInRequiredForOrders = "Sign in with Google to track your booked work orders from Pending to Completed.",
     signInRequiredForChat = "Sign in with Google to send text, photos, videos & voice messages directly to Yusuf Electronics.",
     guestUserLabel = "Yusuf Electronics",
-    signInToUnlockFull = "Sign in with Google to unlock live orders & chat"
+    signInToUnlockFull = "Sign in with Google to unlock live orders & chat",
+    choosePhotoSource = "Send Photo",
+    chooseVideoSource = "Send Video",
+    takePhotoCamera = "Take Photo (Camera)",
+    choosePhotoGallery = "Choose from Gallery",
+    recordVideoCamera = "Record Video (Camera)",
+    chooseVideoGallery = "Choose from Gallery"
 )
 
 val LocalStrings = staticCompositionLocalOf { BnStrings }

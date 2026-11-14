@@ -45,6 +45,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import coil.Coil
+import coil.ImageLoader
+import com.example.media.FsMediaFetcher
 import com.example.data.firebase.GoogleAuthHelper
 import com.example.data.repository.UserRepository
 import com.example.localization.AppLanguage
@@ -72,6 +75,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Coil.setImageLoader(
+            ImageLoader.Builder(applicationContext)
+                .components {
+                    add(FsMediaFetcher.Factory())
+                }
+                .build()
+        )
         LocalNotificationHelper.ensureChannel(this)
         setContent {
             YusufElectronicsTheme {

@@ -152,6 +152,33 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
       },
       "required": ["shopName", "tagline", "phone", "email", "address", "description", "workingHours", "isServiceAvailable", "updatedAt"]
+    },
+    "MediaBlob": {
+      "title": "MediaBlob",
+      "description": "Metadata header for chunked photo, video, or voice attachments stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Uploader Firebase Auth UID" },
+        "recipientId": { "type": "string", "description": "Target customer UID for admin-sent chat attachments" },
+        "mimeType": { "type": "string", "description": "MIME type" },
+        "extension": { "type": "string", "description": "File extension" },
+        "byteSize": { "type": "integer", "description": "Total payload size in bytes" },
+        "chunkCount": { "type": "integer", "description": "Number of Base64 chunk documents" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["ownerId", "recipientId", "mimeType", "extension", "byteSize", "chunkCount", "createdAt"]
+    },
+    "MediaChunk": {
+      "title": "MediaChunk",
+      "description": "Base64-encoded binary slice belonging to a MediaBlob.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Uploader Firebase Auth UID" },
+        "recipientId": { "type": "string", "description": "Target customer UID for admin-sent chat attachments" },
+        "index": { "type": "integer", "description": "Zero-based chunk sequence index" },
+        "data": { "type": "string", "description": "Base64 chunk payload" }
+      },
+      "required": ["ownerId", "recipientId", "index", "data"]
     }
   },
   "firestore": {
@@ -186,6 +213,14 @@
     "/business_settings/{settingId}": {
       "schema": { "$ref": "#/entities/BusinessSettings" },
       "description": "Business settings document (main)."
+    },
+    "/media_blobs/{mediaId}": {
+      "schema": { "$ref": "#/entities/MediaBlob" },
+      "description": "Metadata headers for Firestore-stored media attachments."
+    },
+    "/media_blobs/{mediaId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/MediaChunk" },
+      "description": "Ordered Base64 chunks for Firestore-stored media attachments."
     }
   }
 }

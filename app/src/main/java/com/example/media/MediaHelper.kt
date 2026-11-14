@@ -1,8 +1,12 @@
 package com.example.media
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.ConnectivityManager
@@ -10,26 +14,70 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.provider.OpenableColumns
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.content.FileProvider
+import com.example.R
+import com.example.data.firebase.FirestoreMediaStore
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
 object MediaHelper {
-    const val MAX_VIDEO_BYTES = 20L * 1024L * 1024L // 20 MB
+    const val MAX_VIDEO_BYTES = FirestoreMediaStore.MAX_MEDIA_BYTES // 10 MB
+
+    fun createCameraTempUri(context: Context, prefix: String, extension: String): Uri {
+        val dir = File(context.cacheDir, "camera_media").apply { mkdirs() }
+        val file = File(dir, "${prefix}_${System.currentTimeMillis()}.$extension")
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+    }
 
     suspend fun compressImageToJpeg(context: Context, uri: Uri, maxDim: Int = 1080, quality: Int = 78): ByteArray? =
         withContext(Dispatchers.IO) {
             try {
+                val rotationDegrees = try {
+                    context.contentResolver.openInputStream(uri)?.use { exifStream ->
+                        when (ExifInterface(exifStream).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                        )) {
+                            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                            else -> 0f
+                        }
+                    } ?: 0f
+                } catch (_: Exception) {
+                    0f
+                }
+
                 val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
                 val original = inputStream.use { BitmapFactory.decodeStream(it) } ?: return@withContext null
 
-                val width = original.width
-                val height = original.height
+                val orientedBitmap = if (rotationDegrees != 0f) {
+                    val matrix = Matrix().apply { postRotate(rotationDegrees) }
+                    Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true).also {
+                        if (it !== original) original.recycle()
+                    }
+                } else {
+                    original
+                }
+
+                val width = orientedBitmap.width
+                val height = orientedBitmap.height
                 val scale = if (width > maxDim || height > maxDim) {
                     minOf(maxDim.toFloat() / width, maxDim.toFloat() / height)
                 } else {
@@ -38,19 +86,19 @@ object MediaHelper {
 
                 val targetBitmap = if (scale < 1f) {
                     Bitmap.createScaledBitmap(
-                        original,
+                        orientedBitmap,
                         (width * scale).toInt().coerceAtLeast(1),
                         (height * scale).toInt().coerceAtLeast(1),
                         true
                     )
                 } else {
-                    original
+                    orientedBitmap
                 }
 
                 val out = ByteArrayOutputStream()
                 targetBitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
-                if (targetBitmap !== original) targetBitmap.recycle()
-                original.recycle()
+                if (targetBitmap !== orientedBitmap) targetBitmap.recycle()
+                orientedBitmap.recycle()
                 out.toByteArray()
             } catch (_: Exception) {
                 null
@@ -58,16 +106,39 @@ object MediaHelper {
         }
 
     fun getFileSizeBytes(context: Context, uri: Uri): Long {
-        return try {
+        val queried = try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (idx >= 0) cursor.getLong(idx) else -1L
+                    if (idx >= 0 && !cursor.isNull(idx)) cursor.getLong(idx) else -1L
                 } else -1L
             } ?: -1L
         } catch (_: Exception) {
             -1L
         }
+        if (queried > 0L) return queried
+
+        return try {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+}
+
+class CaptureCompactVideo : ActivityResultContract<Uri, Boolean>() {
+    override fun createIntent(context: Context, input: Uri): Intent {
+        return Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, input)
+            putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 0)
+            putExtra(MediaStore.EXTRA_DURATION_LIMIT, 45)
+            putExtra(MediaStore.EXTRA_SIZE_LIMIT, FirestoreMediaStore.MAX_MEDIA_BYTES)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Boolean {
+        return resultCode == Activity.RESULT_OK
     }
 }
 
@@ -90,8 +161,8 @@ class VoiceRecorderManager(private val context: Context) {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioEncodingBitRate(64000)
-                setAudioSamplingRate(22050)
+                setAudioEncodingBitRate(32000)
+                setAudioSamplingRate(16000)
                 setOutputFile(file.absolutePath)
                 prepare()
                 start()
@@ -140,6 +211,8 @@ class VoicePlayerManager {
         private set
 
     fun togglePlay(
+        context: Context,
+        scope: CoroutineScope,
         key: String,
         source: String,
         onStateChanged: (playingKey: String?, isPlaying: Boolean) -> Unit,
@@ -158,9 +231,43 @@ class VoicePlayerManager {
         }
 
         stop()
+        if (source.isBlank()) {
+            onError("Audio source unavailable.")
+            return
+        }
+
+        if (FirestoreMediaStore.isFsMediaUrl(source)) {
+            scope.launch {
+                try {
+                    val db = FirebaseFirestore.getInstance(
+                        context.applicationContext.getString(R.string.firestore_database_id)
+                    )
+                    val file = FirestoreMediaStore.resolveToCachedFile(context, db, source)
+                    if (file == null) {
+                        onError("Unable to load voice message.")
+                        return@launch
+                    }
+                    startPlayback(key, file.absolutePath, onStateChanged, onError)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    onError(e.localizedMessage ?: "Audio playback error.")
+                }
+            }
+        } else {
+            startPlayback(key, source, onStateChanged, onError)
+        }
+    }
+
+    private fun startPlayback(
+        key: String,
+        resolvedSource: String,
+        onStateChanged: (playingKey: String?, isPlaying: Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
         try {
             val mp = MediaPlayer().apply {
-                setDataSource(source)
+                setDataSource(resolvedSource)
                 setOnPreparedListener {
                     it.start()
                     activeKey = key

@@ -356,3 +356,75 @@ test("Admin: can manage categories, orders, announcements, and business settings
     })
   );
 });
+
+// 6. Media Blobs (chunked photo/video/voice storage) isolation tests
+test("Media Blobs: owner and admin can read/write; cross-user blocked; admin recipient allowed", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const admDb = adminContext().firestore();
+  const ts = nowTs();
+
+  await assertSucceeds(
+    aliceDb.collection("media_blobs").doc("blob_1").collection("chunks").doc("chunk_0").set({
+      ownerId: ALICE_UID,
+      recipientId: "",
+      index: 0,
+      data: "aGVsbG8=",
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("media_blobs").doc("blob_1").set({
+      ownerId: ALICE_UID,
+      recipientId: "",
+      mimeType: "image/jpeg",
+      extension: "jpg",
+      byteSize: 5,
+      chunkCount: 1,
+      createdAt: ts,
+    })
+  );
+
+  // Owner & Admin can get blob and chunk; Bob cannot
+  await assertSucceeds(aliceDb.collection("media_blobs").doc("blob_1").get());
+  await assertSucceeds(admDb.collection("media_blobs").doc("blob_1").get());
+  await assertSucceeds(admDb.collection("media_blobs").doc("blob_1").collection("chunks").doc("chunk_0").get());
+  await assertFails(bobDb.collection("media_blobs").doc("blob_1").get());
+  await assertFails(bobDb.collection("media_blobs").doc("blob_1").collection("chunks").doc("chunk_0").get());
+
+  // Customer cannot assign recipientId to another customer
+  await assertFails(
+    aliceDb.collection("media_blobs").doc("blob_spoof").set({
+      ownerId: ALICE_UID,
+      recipientId: BOB_UID,
+      mimeType: "image/jpeg",
+      extension: "jpg",
+      byteSize: 5,
+      chunkCount: 1,
+      createdAt: ts,
+    })
+  );
+
+  // Admin can send media to Alice and Alice can read it
+  await assertSucceeds(
+    admDb.collection("media_blobs").doc("blob_adm").collection("chunks").doc("chunk_0").set({
+      ownerId: ADMIN_UID,
+      recipientId: ALICE_UID,
+      index: 0,
+      data: "d29ybGQ=",
+    })
+  );
+  await assertSucceeds(
+    admDb.collection("media_blobs").doc("blob_adm").set({
+      ownerId: ADMIN_UID,
+      recipientId: ALICE_UID,
+      mimeType: "audio/mp4",
+      extension: "m4a",
+      byteSize: 5,
+      chunkCount: 1,
+      createdAt: ts,
+    })
+  );
+  await assertSucceeds(aliceDb.collection("media_blobs").doc("blob_adm").get());
+  await assertSucceeds(aliceDb.collection("media_blobs").doc("blob_adm").collection("chunks").doc("chunk_0").get());
+  await assertFails(bobDb.collection("media_blobs").doc("blob_adm").get());
+});

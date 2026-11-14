@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -98,7 +100,10 @@ import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.localization.AppLanguage
 import com.example.localization.LocalStrings
+import com.example.media.CaptureCompactVideo
+import com.example.media.MediaHelper
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.MediaSourceChooserDialog
 import com.example.ui.components.PrimaryYellowButton
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.YusufLogoBadge
@@ -815,6 +820,10 @@ fun ServiceRequestScreen(
     val selectedImages = remember { mutableStateListOf<Uri>() }
     var selectedVideo by remember { mutableStateOf<Uri?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
+    var showPhotoSourceDialog by remember { mutableStateOf(false) }
+    var showVideoSourceDialog by remember { mutableStateOf(false) }
+    var pendingCameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraVideoUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(3)
@@ -827,6 +836,28 @@ fun ServiceRequestScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) selectedVideo = uri
+    }
+
+    val takePhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            pendingCameraPhotoUri?.let { uri ->
+                if (selectedImages.size < 3) {
+                    selectedImages.add(uri)
+                } else {
+                    selectedImages[2] = uri
+                }
+            }
+        }
+    }
+
+    val captureVideoLauncher = rememberLauncherForActivityResult(
+        contract = CaptureCompactVideo()
+    ) { success ->
+        if (success) {
+            pendingCameraVideoUri?.let { selectedVideo = it }
+        }
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -849,6 +880,7 @@ fun ServiceRequestScreen(
             modifier = Modifier
                 .widthIn(max = 640.dp)
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
@@ -1032,11 +1064,7 @@ fun ServiceRequestScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 OutlinedButton(
-                    onClick = {
-                        photoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
+                    onClick = { showPhotoSourceDialog = true },
                     border = BorderStroke(1.dp, SubtleBorder),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -1048,11 +1076,7 @@ fun ServiceRequestScreen(
                     Text("${strings.addPhotos} (${selectedImages.size})", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 OutlinedButton(
-                    onClick = {
-                        videoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                        )
-                    },
+                    onClick = { showVideoSourceDialog = true },
                     border = BorderStroke(1.dp, SubtleBorder),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -1187,6 +1211,60 @@ fun ServiceRequestScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showPhotoSourceDialog) {
+        MediaSourceChooserDialog(
+            title = strings.choosePhotoSource,
+            cameraLabel = strings.takePhotoCamera,
+            galleryLabel = strings.choosePhotoGallery,
+            cancelLabel = strings.cancel,
+            isVideo = false,
+            onCameraClick = {
+                try {
+                    val uri = MediaHelper.createCameraTempUri(context, "order_photo", "jpg")
+                    pendingCameraPhotoUri = uri
+                    takePhotoLauncher.launch(uri)
+                } catch (_: ActivityNotFoundException) {
+                    validationError = "Camera app unavailable on this device."
+                } catch (e: Exception) {
+                    validationError = e.localizedMessage ?: "Unable to open camera."
+                }
+            },
+            onGalleryClick = {
+                photoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onDismiss = { showPhotoSourceDialog = false }
+        )
+    }
+
+    if (showVideoSourceDialog) {
+        MediaSourceChooserDialog(
+            title = strings.chooseVideoSource,
+            cameraLabel = strings.recordVideoCamera,
+            galleryLabel = strings.chooseVideoGallery,
+            cancelLabel = strings.cancel,
+            isVideo = true,
+            onCameraClick = {
+                try {
+                    val uri = MediaHelper.createCameraTempUri(context, "order_video", "mp4")
+                    pendingCameraVideoUri = uri
+                    captureVideoLauncher.launch(uri)
+                } catch (_: ActivityNotFoundException) {
+                    validationError = "Video camera unavailable on this device."
+                } catch (e: Exception) {
+                    validationError = e.localizedMessage ?: "Unable to open camera video."
+                }
+            },
+            onGalleryClick = {
+                videoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                )
+            },
+            onDismiss = { showVideoSourceDialog = false }
+        )
     }
 
     if (bookingState.submittedOrderCode != null) {
