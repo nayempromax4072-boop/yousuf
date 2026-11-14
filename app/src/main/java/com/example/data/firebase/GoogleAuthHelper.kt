@@ -2,12 +2,15 @@ package com.example.data.firebase
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -24,6 +27,12 @@ import kotlinx.coroutines.withContext
 object GoogleAuthHelper {
     private const val TAG = "GoogleAuthHelper"
     const val ADMIN_EMAIL = "nayempromax4072@gmail.com"
+
+    private tailrec fun Context.findActivity(): Activity? = when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
     suspend fun isVerifiedAdmin(user: FirebaseUser?): Boolean {
         if (user == null) return false
@@ -67,7 +76,8 @@ object GoogleAuthHelper {
 
         scope.launch {
             try {
-                val result = credentialManager.getCredential(context, request)
+                val activityContext = context.findActivity() ?: context
+                val result = credentialManager.getCredential(activityContext, request)
                 val credential = result.credential
                 if (credential is CustomCredential &&
                     credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -107,7 +117,7 @@ object GoogleAuthHelper {
 
         scope.launch {
             try {
-                val activityContext = context as? Activity ?: context
+                val activityContext = context.findActivity() ?: context
                 val result = credentialManager.getCredential(activityContext, request)
                 val credential = result.credential
                 if (credential is CustomCredential &&
@@ -121,8 +131,29 @@ object GoogleAuthHelper {
                     onAuthError("Unexpected credential type returned.")
                 }
             } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "Google Sign-In cancelled or dismissed: ${e.message}", e)
-                onAuthCancelled()
+                Log.w(TAG, "Google Sign-In cancelled or dismissed: ${e.errorMessage ?: e.message}", e)
+                val detail = e.errorMessage?.toString().orEmpty()
+                if (detail.contains("developer", ignoreCase = true) ||
+                    detail.contains("28444") ||
+                    detail.contains("10:")
+                ) {
+                    onAuthError("Google Sign-In configuration mismatch (SHA-1): $detail")
+                } else {
+                    onAuthCancelled()
+                }
+            } catch (e: NoCredentialException) {
+                Log.e(TAG, "No Google credential available", e)
+                onAuthError(
+                    e.errorMessage?.toString()?.takeIf { it.isNotBlank() }
+                        ?: "কোনো Google অ্যাকাউন্ট পাওয়া যায়নি বা অ্যাপের SHA-1 কনফিগারেশন মেলেনি।"
+                )
+            } catch (e: GetCredentialException) {
+                Log.e(TAG, "Credential Manager Sign-In failed: ${e.type}", e)
+                onAuthError(
+                    e.errorMessage?.toString()?.takeIf { it.isNotBlank() }
+                        ?: e.localizedMessage
+                        ?: "Google Sign-In failed (${e.type})."
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Google Sign-In failed", e)
                 onAuthError(e.localizedMessage ?: "Google Sign-In failed. Please try again.")
