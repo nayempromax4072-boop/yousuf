@@ -34,13 +34,26 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           fi
 
-      - name: Prepare google-services.json from secret
+      - name: Prepare and validate google-services.json
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
           elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
             printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '[:space:]' | base64 -d > app/google-services.json
           fi
+
+          if [ ! -f app/google-services.json ]; then
+            echo "::error::app/google-services.json is missing! Add GOOGLE_SERVICES_JSON secret in GitHub Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          with open("app/google-services.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+          assert "project_info" in data and "client" in data, "Invalid google-services.json structure"
+          print("Validated google-services.json for project:", data["project_info"].get("project_id"))
+          PY
 
       - name: Prepare debug keystore
         env:
@@ -57,16 +70,10 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Check Firebase google-services.json
-        run: |
-          if [ ! -f app/google-services.json ]; then
-            echo "::warning::app/google-services.json is missing. Add GOOGLE_SERVICES_JSON secret in GitHub Settings so Firebase & Google Sign-In work."
-          fi
-
       - name: Decode optional release keystore from secret
         if: env.RELEASE_KEYSTORE_BASE64 != ''
         run: |
-          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > my-upload-key.jks
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -74,7 +81,16 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --no-configuration-cache --no-build-cache
+
+      - name: Verify Firebase resources inside build
+        run: |
+          VALUES_XML="app/build/generated/res/processDebugGoogleServices/values/values.xml"
+          if [ ! -f "$VALUES_XML" ] || ! grep -q "google_app_id" "$VALUES_XML"; then
+            echo "::error::Firebase resources were not compiled into the APK!"
+            exit 1
+          fi
+          echo "Verified google_app_id and Firebase config are bundled in the APK."
 
       - name: Build Signed Release APK (optional)
         if: env.RELEASE_KEYSTORE_BASE64 != ''
@@ -82,17 +98,17 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon --no-configuration-cache --no-build-cache
 
       - name: Prepare APK for download
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk yusuf-electronics.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "yusuf-electronics-b${{ github.run_number }}.apk"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: yusuf-electronics-apk
-          path: yusuf-electronics.apk
+          name: yusuf-electronics-apk-b${{ github.run_number }}
+          path: yusuf-electronics-b${{ github.run_number }}.apk
 
       - name: Upload Signed Release APK Artifact (optional)
         if: env.RELEASE_KEYSTORE_BASE64 != ''
@@ -107,10 +123,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          APK_FILE="yusuf-electronics-b${{ github.run_number }}.apk"
           if gh release view latest >/dev/null 2>&1; then
-            gh release upload latest yusuf-electronics.apk --clobber
+            for old_asset in $(gh release view latest --json assets --jq '.assets[].name'); do
+              gh release delete-asset latest "$old_asset" --yes || true
+            done
+            gh release upload latest "$APK_FILE" --clobber
+            gh release edit latest \
+              --title "Yusuf Electronics APK (Build #${{ github.run_number }})" \
+              --notes "Installable Android APK (Build #${{ github.run_number }}) with Firebase verified."
           else
-            gh release create latest yusuf-electronics.apk \
-              --title "Yusuf Electronics APK (Latest)" \
-              --notes "Installable Android APK for Yusuf Electronics (built automatically via GitHub Actions)."
+            gh release create latest "$APK_FILE" \
+              --title "Yusuf Electronics APK (Build #${{ github.run_number }})" \
+              --notes "Installable Android APK (Build #${{ github.run_number }}) with Firebase verified."
           fi
