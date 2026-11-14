@@ -106,19 +106,16 @@ Yusuf Electronics is a production-ready Android application integrating both a *
    ```
    Output APK: `app/build/outputs/apk/release/app-release.apk`
 
-### GitHub Actions Automated APK Build
-1. In your GitHub repository, go to **Settings → Secrets and variables → Actions** and add:
-   - `GOOGLE_SERVICES_JSON_BASE64`: Base64-encoded `app/google-services.json`
-   - `RELEASE_KEYSTORE_BASE64`: Base64-encoded `my-upload-key.jks`
-   - `STORE_PASSWORD`: Keystore password
-   - `KEY_PASSWORD`: Key alias password
-2. Push to `main` or manually trigger **Build Yusuf Electronics Android APK** under the **Actions** tab.
+### GitHub Actions Automated APK Build (Direct GitHub Distribution)
+No GitHub Secrets are required to build and distribute the installable APK directly from GitHub:
+1. Push your code to `main` (or manually trigger **Build Yusuf Electronics Android APK** under the **Actions** tab).
+2. GitHub Actions automatically decodes `debug.keystore.base64`, builds `yusuf-electronics.apk` with JDK 21 + Gradle 9.3.1, uploads it as an Actions Artifact, and publishes it to **GitHub Releases (`latest`)**.
+3. *(Optional, only if you want a separate Play-Store-style release keystore)* Add `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, and `KEY_PASSWORD` under **Settings → Secrets and variables → Actions**.
 
 ---
 
 ## 7. How to Download and Install the APK
 
-1. Open your GitHub repository's **Actions** tab (or **Releases** page).
-2. Click the latest successful workflow run and download `yusuf-electronics-release-apk` (or `yusuf-electronics-debug-apk`).
-3. Unzip the downloaded artifact and transfer the `.apk` file to your Android device.
-4. On the Android device, open the `.apk` file, allow **Install from unknown sources** for your file manager/browser if prompted, and tap **Install**.
+1. **Direct APK (Recommended):** Open your GitHub repository's **Releases** page and download `yusuf-electronics.apk` directly on your Android phone.
+2. **Or via Actions:** Open the **Actions** tab → click the latest green workflow run → download `yusuf-electronics-apk` and unzip it.
+3. On your Android device, tap `yusuf-electronics.apk`, allow **Install from unknown sources** for your browser/file manager if prompted, and tap **Install**.
