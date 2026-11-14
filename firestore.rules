@@ -1,0 +1,355 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token &&
+         'email_verified' in request.auth.token &&
+         request.auth.token.email == 'nayempromax4072@gmail.com' &&
+         request.auth.token.email_verified == true) ||
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 80 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+             data.role in ['customer', 'admin'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 300)) &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 1000)) &&
+             (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 500)) &&
+             (!('totalOrders' in data) || (data.totalOrders is int && data.totalOrders >= 0)) &&
+             (!('completedOrders' in data) || (data.completedOrders is int && data.completedOrders >= 0)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCategory(data) {
+      return data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 80 &&
+             data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 120 &&
+             data.descriptionEn is string && data.descriptionEn.size() >= 1 && data.descriptionEn.size() <= 400 &&
+             data.descriptionBn is string && data.descriptionBn.size() >= 1 && data.descriptionBn.size() <= 500 &&
+             data.iconKey is string && data.iconKey.size() >= 1 && data.iconKey.size() <= 40 &&
+             (!('estimatedPriceBdt' in data) || (data.estimatedPriceBdt is string && data.estimatedPriceBdt.size() <= 60)) &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.isActive is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrderStatus(status) {
+      return status in ['Pending', 'Accepted', 'Contacted', 'Work Scheduled', 'In Progress', 'Completed', 'Cancelled'];
+    }
+
+    function isValidOrder(data) {
+      return data.orderCode is string && data.orderCode.size() >= 3 && data.orderCode.size() <= 40 &&
+             data.customerId is string && data.customerId.size() >= 1 && data.customerId.size() <= 128 &&
+             data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 80 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 30 &&
+             data.categoryId is string && data.categoryId.size() >= 1 && data.categoryId.size() <= 128 &&
+             data.categoryName is string && data.categoryName.size() >= 1 && data.categoryName.size() <= 120 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 2000 &&
+             data.address is string && data.address.size() >= 1 && data.address.size() <= 300 &&
+             data.preferredDate is string && data.preferredDate.size() >= 1 && data.preferredDate.size() <= 40 &&
+             data.preferredTime is string && data.preferredTime.size() >= 1 && data.preferredTime.size() <= 40 &&
+             data.attachmentUrls is list && data.attachmentUrls.size() <= 5 &&
+             (data.attachmentUrls.size() == 0 || (data.attachmentUrls[0] is string && data.attachmentUrls[0].size() <= 1500)) &&
+             (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 1500)) &&
+             (!('estimatedCostBdt' in data) || (data.estimatedCostBdt is int && data.estimatedCostBdt >= 0)) &&
+             isValidOrderStatus(data.status) &&
+             data.adminNotes is string && data.adminNotes.size() <= 1000 &&
+             (!('scheduledDate' in data) || (data.scheduledDate is string && data.scheduledDate.size() <= 60)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidConversation(data) {
+      return data.customerId is string && data.customerId.size() >= 1 && data.customerId.size() <= 128 &&
+             data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 80 &&
+             (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 30)) &&
+             (!('customerEmail' in data) || (data.customerEmail is string && data.customerEmail.size() <= 120)) &&
+             data.lastMessageText is string && data.lastMessageText.size() <= 500 &&
+             data.lastMessageType in ['text', 'image', 'video', 'voice'] &&
+             data.lastSenderRole in ['customer', 'admin'] &&
+             data.unreadByCustomer is int && data.unreadByCustomer >= 0 &&
+             data.unreadByAdmin is int && data.unreadByAdmin >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidMessage(data) {
+      return data.conversationId is string && data.conversationId.size() >= 1 && data.conversationId.size() <= 128 &&
+             data.customerId is string && data.customerId.size() >= 1 && data.customerId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.senderRole in ['customer', 'admin'] &&
+             data.messageType in ['text', 'image', 'video', 'voice'] &&
+             data.text is string && data.text.size() <= 2000 &&
+             data.mediaUrl is string && data.mediaUrl.size() <= 1500 &&
+             data.mediaType is string && data.mediaType.size() <= 100 &&
+             data.mediaDurationSec is int && data.mediaDurationSec >= 0 && data.mediaDurationSec <= 3600 &&
+             data.isRead is bool &&
+             (!('readAt' in data) || (data.readAt is timestamp && data.readAt <= request.time)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidNotification(data) {
+      return data.targetUserId is string && data.targetUserId.size() >= 1 && data.targetUserId.size() <= 128 &&
+             data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 500 &&
+             data.type in ['order_new', 'order_status', 'chat_message', 'announcement'] &&
+             data.relatedId is string && data.relatedId.size() <= 128 &&
+             data.isRead is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAnnouncement(data) {
+      return data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.body is string && data.body.size() >= 1 && data.body.size() <= 1000 &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidBusinessSettings(data) {
+      return data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 80 &&
+             data.tagline is string && data.tagline.size() >= 1 && data.tagline.size() <= 160 &&
+             data.phone is string && data.phone.size() >= 3 && data.phone.size() <= 30 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+             data.address is string && data.address.size() >= 1 && data.address.size() <= 300 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 1000 &&
+             data.workingHours is string && data.workingHours.size() >= 1 && data.workingHours.size() <= 160 &&
+             data.isServiceAvailable is bool &&
+             (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 1000)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Admins Registry (server/console managed only)
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow list, write: if false;
+    }
+
+    // 2. Users (PII isolated to owner or admin)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       (isOwner(userId) || isAdmin()) &&
+                       incoming().uid == userId &&
+                       (incoming().role == 'customer' || isAdmin()) &&
+                       incoming().keys().hasAll(['uid', 'fullName', 'email', 'role', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'address', 'photoUrl', 'role', 'fcmToken', 'totalOrders', 'completedOrders', 'createdAt', 'updatedAt']) &&
+                       isValidUser(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUser(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           isOwner(userId) &&
+                           incoming().role == existing().role &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'address', 'photoUrl', 'fcmToken', 'updatedAt'])
+                         )
+                       );
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // 3. Service Categories
+    match /categories/{categoryId} {
+      allow get: if isSignedIn() && isValidId(categoryId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() &&
+                       isValidId(categoryId) &&
+                       incoming().keys().hasAll(['nameEn', 'nameBn', 'descriptionEn', 'descriptionBn', 'iconKey', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['nameEn', 'nameBn', 'descriptionEn', 'descriptionBn', 'iconKey', 'estimatedPriceBdt', 'sortOrder', 'isActive', 'createdAt', 'updatedAt']) &&
+                       isValidCategory(incoming());
+      allow update: if isAdmin() &&
+                       isValidId(categoryId) &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidCategory(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['nameEn', 'nameBn', 'descriptionEn', 'descriptionBn', 'iconKey', 'estimatedPriceBdt', 'sortOrder', 'isActive', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    // 4. Service Orders
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && (existing().customerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().customerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       incoming().customerId == request.auth.uid &&
+                       incoming().status == 'Pending' &&
+                       incoming().adminNotes == '' &&
+                       incoming().keys().hasAll(['orderCode', 'customerId', 'customerName', 'phone', 'categoryId', 'categoryName', 'description', 'address', 'preferredDate', 'preferredTime', 'attachmentUrls', 'status', 'adminNotes', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['orderCode', 'customerId', 'customerName', 'phone', 'categoryId', 'categoryName', 'description', 'address', 'preferredDate', 'preferredTime', 'attachmentUrls', 'videoUrl', 'estimatedCostBdt', 'status', 'adminNotes', 'scheduledDate', 'createdAt', 'updatedAt']) &&
+                       isValidOrder(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       isValidOrder(incoming()) &&
+                       incoming().customerId == existing().customerId &&
+                       incoming().orderCode == existing().orderCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           existing().customerId == request.auth.uid &&
+                           existing().status == 'Pending' &&
+                           incoming().status == 'Cancelled' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         )
+                       );
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // 5. Private Conversations (1:1 Customer <-> Admin)
+    match /conversations/{conversationId} {
+      allow get: if isSignedIn() && isValidId(conversationId) && (conversationId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().customerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(conversationId) &&
+                       (isAdmin() || (conversationId == request.auth.uid && incoming().customerId == request.auth.uid)) &&
+                       incoming().keys().hasAll(['customerId', 'customerName', 'lastMessageText', 'lastMessageType', 'lastSenderRole', 'unreadByCustomer', 'unreadByAdmin', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['customerId', 'customerName', 'customerPhone', 'customerEmail', 'lastMessageText', 'lastMessageType', 'lastSenderRole', 'unreadByCustomer', 'unreadByAdmin', 'createdAt', 'updatedAt']) &&
+                       isValidConversation(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(conversationId) &&
+                       isValidConversation(incoming()) &&
+                       incoming().customerId == existing().customerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           conversationId == request.auth.uid &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['customerName', 'customerPhone', 'lastMessageText', 'lastMessageType', 'lastSenderRole', 'unreadByCustomer', 'unreadByAdmin', 'updatedAt'])
+                         )
+                       );
+      allow delete: if isAdmin() && isValidId(conversationId);
+
+      // 5a. Messages Subcollection (Flat authorization via conversationId wildcard & denormalized customerId)
+      match /messages/{messageId} {
+        allow get, list: if isSignedIn() && (conversationId == request.auth.uid || isAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(messageId) &&
+                         incoming().senderId == request.auth.uid &&
+                         incoming().conversationId == conversationId &&
+                         (
+                           (conversationId == request.auth.uid && incoming().customerId == request.auth.uid && incoming().senderRole == 'customer') ||
+                           (isAdmin() && incoming().senderRole == 'admin')
+                         ) &&
+                         incoming().keys().hasAll(['conversationId', 'customerId', 'senderId', 'senderRole', 'messageType', 'text', 'mediaUrl', 'mediaType', 'mediaDurationSec', 'isRead', 'createdAt']) &&
+                         incoming().keys().hasOnly(['conversationId', 'customerId', 'senderId', 'senderRole', 'messageType', 'text', 'mediaUrl', 'mediaType', 'mediaDurationSec', 'isRead', 'readAt', 'createdAt']) &&
+                         isValidMessage(incoming());
+        allow update: if isSignedIn() &&
+                         isValidId(messageId) &&
+                         isValidMessage(incoming()) &&
+                         incoming().senderId == existing().senderId &&
+                         incoming().conversationId == existing().conversationId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           isAdmin() ||
+                           (
+                             conversationId == request.auth.uid &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'readAt'])
+                           )
+                         );
+        allow delete: if isAdmin() && isValidId(messageId);
+      }
+    }
+
+    // 6. Notifications
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (existing().targetUserId == request.auth.uid || (existing().targetUserId == 'ADMIN' && isAdmin()) || isAdmin());
+      allow list: if isSignedIn() && (existing().targetUserId == request.auth.uid || (existing().targetUserId == 'ADMIN' && isAdmin()) || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(notificationId) &&
+                       incoming().senderId == request.auth.uid &&
+                       (isAdmin() || incoming().targetUserId == 'ADMIN') &&
+                       incoming().keys().hasAll(['targetUserId', 'senderId', 'title', 'body', 'type', 'relatedId', 'isRead', 'createdAt']) &&
+                       incoming().keys().hasOnly(['targetUserId', 'senderId', 'title', 'body', 'type', 'relatedId', 'isRead', 'createdAt']) &&
+                       isValidNotification(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(notificationId) &&
+                       isValidNotification(incoming()) &&
+                       incoming().targetUserId == existing().targetUserId &&
+                       incoming().senderId == existing().senderId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isAdmin() ||
+                         (
+                           (existing().targetUserId == request.auth.uid || (existing().targetUserId == 'ADMIN' && isAdmin())) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+                         )
+                       );
+      allow delete: if isAdmin() && isValidId(notificationId);
+    }
+
+    // 7. Announcements (Broadcasts by Admin)
+    match /announcements/{announcementId} {
+      allow get: if isSignedIn() && isValidId(announcementId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() &&
+                       isValidId(announcementId) &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll(['title', 'body', 'createdBy', 'createdAt']) &&
+                       incoming().keys().hasOnly(['title', 'body', 'createdBy', 'createdAt']) &&
+                       isValidAnnouncement(incoming());
+      allow update: if isAdmin() &&
+                       isValidId(announcementId) &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidAnnouncement(incoming());
+      allow delete: if isAdmin() && isValidId(announcementId);
+    }
+
+    // 8. Business Settings
+    match /business_settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() &&
+                       isValidId(settingId) &&
+                       incoming().keys().hasAll(['shopName', 'tagline', 'phone', 'email', 'address', 'description', 'workingHours', 'isServiceAvailable', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['shopName', 'tagline', 'phone', 'email', 'address', 'description', 'workingHours', 'isServiceAvailable', 'logoUrl', 'updatedAt']) &&
+                       isValidBusinessSettings(incoming());
+      allow update: if isAdmin() &&
+                       isValidId(settingId) &&
+                       isValidBusinessSettings(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['shopName', 'tagline', 'phone', 'email', 'address', 'description', 'workingHours', 'isServiceAvailable', 'logoUrl', 'updatedAt']);
+      allow delete: if false;
+    }
+  }
+}

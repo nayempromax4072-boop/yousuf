@@ -1,0 +1,6 @@
+{
+  "name": "Yusuf Electronics",
+  "description": "Customer service, work-order management, and real-time messaging application for Yusuf Electronics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

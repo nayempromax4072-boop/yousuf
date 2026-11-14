@@ -1,0 +1,51 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'nayempromax4072@gmail.com' &&
+         request.auth.token.email_verified == true) ||
+        request.auth.token.admin == true
+      );
+    }
+
+    // Order attachments: images <= 5MB, videos <= 20MB
+    match /orders/{customerId}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == customerId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == customerId || isAdmin()) && (
+        (request.resource.contentType.matches('image/.*') && request.resource.size <= 5 * 1024 * 1024) ||
+        (request.resource.contentType.matches('video/.*') && request.resource.size <= 20 * 1024 * 1024)
+      );
+    }
+
+    // Chat media: images <= 5MB, videos <= 20MB, audio/voice <= 5MB
+    match /chats/{customerId}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == customerId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == customerId || isAdmin()) && (
+        (request.resource.contentType.matches('image/.*') && request.resource.size <= 5 * 1024 * 1024) ||
+        (request.resource.contentType.matches('video/.*') && request.resource.size <= 20 * 1024 * 1024) ||
+        (request.resource.contentType.matches('audio/.*') && request.resource.size <= 5 * 1024 * 1024)
+      );
+    }
+
+    // Profile pictures: images <= 3MB
+    match /profiles/{userId}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin()) &&
+                      request.resource.contentType.matches('image/.*') &&
+                      request.resource.size <= 3 * 1024 * 1024;
+    }
+
+    // Shop branding
+    match /branding/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() &&
+                      request.resource.contentType.matches('image/.*') &&
+                      request.resource.size <= 3 * 1024 * 1024;
+    }
+  }
+}

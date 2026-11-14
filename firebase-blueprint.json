@@ -1,0 +1,191 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered customer or administrator profile for Yusuf Electronics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "fullName": { "type": "string", "description": "Customer or admin full name" },
+        "email": { "type": "string", "description": "Account email address" },
+        "phone": { "type": "string", "description": "Bangladesh mobile number" },
+        "address": { "type": "string", "description": "Service street address" },
+        "photoUrl": { "type": "string", "description": "Profile picture URL" },
+        "role": { "type": "string", "enum": ["customer", "admin"], "description": "User role" },
+        "fcmToken": { "type": "string", "description": "Firebase Cloud Messaging device token" },
+        "totalOrders": { "type": "integer", "description": "Total submitted orders" },
+        "completedOrders": { "type": "integer", "description": "Completed orders count" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["uid", "fullName", "email", "role", "createdAt", "updatedAt"]
+    },
+    "ServiceCategory": {
+      "title": "ServiceCategory",
+      "description": "Electrical, plumbing, CCTV, or building maintenance service category.",
+      "type": "object",
+      "properties": {
+        "nameEn": { "type": "string", "description": "English category name" },
+        "nameBn": { "type": "string", "description": "Bengali category name" },
+        "descriptionEn": { "type": "string", "description": "English service description" },
+        "descriptionBn": { "type": "string", "description": "Bengali service description" },
+        "iconKey": { "type": "string", "description": "Icon identifier key" },
+        "estimatedPriceBdt": { "type": "string", "description": "Estimated price range in BDT" },
+        "sortOrder": { "type": "integer", "description": "Display sort order" },
+        "isActive": { "type": "boolean", "description": "Whether category is visible to customers" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["nameEn", "nameBn", "descriptionEn", "descriptionBn", "iconKey", "isActive", "sortOrder", "createdAt", "updatedAt"]
+    },
+    "ServiceOrder": {
+      "title": "ServiceOrder",
+      "description": "Customer service work-order request.",
+      "type": "object",
+      "properties": {
+        "orderCode": { "type": "string", "description": "Human-readable unique order ID" },
+        "customerId": { "type": "string", "description": "Customer Firebase Auth UID" },
+        "customerName": { "type": "string", "description": "Customer full name" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "categoryId": { "type": "string", "description": "Selected category ID" },
+        "categoryName": { "type": "string", "description": "Selected category display title" },
+        "description": { "type": "string", "description": "Detailed problem description" },
+        "address": { "type": "string", "description": "Full service address" },
+        "preferredDate": { "type": "string", "description": "Preferred service date" },
+        "preferredTime": { "type": "string", "description": "Preferred service time slot" },
+        "attachmentUrls": { "type": "array", "description": "Optional photo attachment URLs" },
+        "videoUrl": { "type": "string", "description": "Optional video attachment URL" },
+        "estimatedCostBdt": { "type": "integer", "description": "Estimated or billed BDT amount" },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Accepted", "Contacted", "Work Scheduled", "In Progress", "Completed", "Cancelled"],
+          "description": "Current order lifecycle status"
+        },
+        "adminNotes": { "type": "string", "description": "Internal admin notes" },
+        "scheduledDate": { "type": "string", "description": "Confirmed appointment date/time" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["orderCode", "customerId", "customerName", "phone", "categoryId", "categoryName", "description", "address", "preferredDate", "preferredTime", "attachmentUrls", "status", "adminNotes", "createdAt", "updatedAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Private 1-to-1 conversation summary between a customer and Yusuf Electronics admin.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "description": "Customer Firebase Auth UID" },
+        "customerName": { "type": "string", "description": "Customer name" },
+        "customerPhone": { "type": "string", "description": "Customer phone number" },
+        "customerEmail": { "type": "string", "description": "Customer email" },
+        "lastMessageText": { "type": "string", "description": "Preview of last message" },
+        "lastMessageType": { "type": "string", "enum": ["text", "image", "video", "voice"], "description": "Type of last message" },
+        "lastSenderRole": { "type": "string", "enum": ["customer", "admin"], "description": "Role of last sender" },
+        "unreadByCustomer": { "type": "integer", "description": "Unread message count for customer" },
+        "unreadByAdmin": { "type": "integer", "description": "Unread message count for admin" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["customerId", "customerName", "lastMessageText", "lastMessageType", "lastSenderRole", "unreadByCustomer", "unreadByAdmin", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time text, image, video, or voice message in a customer conversation.",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string", "description": "Parent conversation ID (customer UID)" },
+        "customerId": { "type": "string", "description": "Denormalized customer UID" },
+        "senderId": { "type": "string", "description": "Sender Firebase Auth UID" },
+        "senderRole": { "type": "string", "enum": ["customer", "admin"], "description": "Role of sender" },
+        "messageType": { "type": "string", "enum": ["text", "image", "video", "voice"], "description": "Message payload type" },
+        "text": { "type": "string", "description": "Message text body" },
+        "mediaUrl": { "type": "string", "description": "Firebase Storage download URL" },
+        "mediaType": { "type": "string", "description": "MIME type of media attachment" },
+        "mediaDurationSec": { "type": "integer", "description": "Duration in seconds for voice/video" },
+        "isRead": { "type": "boolean", "description": "Whether recipient has read the message" },
+        "readAt": { "type": "string", "format": "date-time", "description": "Timestamp when read" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" }
+      },
+      "required": ["conversationId", "customerId", "senderId", "senderRole", "messageType", "text", "mediaUrl", "mediaType", "mediaDurationSec", "isRead", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Targeted notification for a specific customer or admin.",
+      "type": "object",
+      "properties": {
+        "targetUserId": { "type": "string", "description": "Recipient UID or 'ADMIN'" },
+        "senderId": { "type": "string", "description": "Sender UID" },
+        "title": { "type": "string", "description": "Notification title" },
+        "body": { "type": "string", "description": "Notification body text" },
+        "type": { "type": "string", "enum": ["order_new", "order_status", "chat_message", "announcement"], "description": "Notification category" },
+        "relatedId": { "type": "string", "description": "Related order or conversation ID" },
+        "isRead": { "type": "boolean", "description": "Read flag" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["targetUserId", "senderId", "title", "body", "type", "relatedId", "isRead", "createdAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Shop-wide announcement broadcast by Yusuf Electronics admin.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Announcement headline" },
+        "body": { "type": "string", "description": "Announcement message" },
+        "createdBy": { "type": "string", "description": "Admin UID" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["title", "body", "createdBy", "createdAt"]
+    },
+    "BusinessSettings": {
+      "title": "BusinessSettings",
+      "description": "Global shop profile, hours, and service availability.",
+      "type": "object",
+      "properties": {
+        "shopName": { "type": "string", "description": "Shop display name" },
+        "tagline": { "type": "string", "description": "Shop tagline" },
+        "phone": { "type": "string", "description": "Primary hotline number" },
+        "email": { "type": "string", "description": "Shop contact email" },
+        "address": { "type": "string", "description": "Shop physical address" },
+        "description": { "type": "string", "description": "About the business" },
+        "workingHours": { "type": "string", "description": "Working hours schedule" },
+        "isServiceAvailable": { "type": "boolean", "description": "Whether service requests are open" },
+        "logoUrl": { "type": "string", "description": "Optional custom shop logo URL" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["shopName", "tagline", "phone", "email", "address", "description", "workingHours", "isServiceAvailable", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles keyed by Firebase Auth UID."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/ServiceCategory" },
+      "description": "Service categories managed by admin."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/ServiceOrder" },
+      "description": "Customer service work orders."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "Customer-to-admin private conversation headers keyed by customer UID."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Real-time messages inside a customer conversation."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Per-user and admin notifications."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Shop-wide announcements created by admin."
+    },
+    "/business_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/BusinessSettings" },
+      "description": "Business settings document (main)."
+    }
+  }
+}
